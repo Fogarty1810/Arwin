@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Transcribe a video/audio file -> .srt (captions) + _words.json (word timings).
-Usage: python3 transcribe.py VIDEO [--lang en|ms] [--model small|medium] [--prompt "names, terms"] [--maxwords 4]"""
+Usage: python3 transcribe.py VIDEO [--lang en|ms] [--english] [--model small|medium] [--prompt "names, terms"] [--maxwords 4]
+--english: speech in another language (e.g. Malay) is translated, so the captions come out in English."""
 import argparse, json, os
 from faster_whisper import WhisperModel
 
@@ -9,11 +10,13 @@ ap.add_argument("video")
 ap.add_argument("--lang", default="en", help="language actually spoken: en or ms")
 ap.add_argument("--model", default="small", help="small = fast; medium = better for Malay")
 ap.add_argument("--prompt", default=None, help="spelling hints: names, brands, terms")
+ap.add_argument("--english", action="store_true", help="translate the speech into English captions")
 ap.add_argument("--maxwords", type=int, default=4, help="max words per caption line")
 a = ap.parse_args()
 
 model = WhisperModel(a.model, device="cpu", compute_type="int8")
 segs, info = model.transcribe(a.video, language=a.lang, word_timestamps=True,
+                              task="translate" if a.english and a.lang != "en" else "transcribe",
                               vad_filter=True, initial_prompt=a.prompt)
 words = [{"w": w.word.strip(), "s": round(w.start, 2), "e": round(w.end, 2)}
          for s in segs for w in (s.words or []) if w.word.strip()]

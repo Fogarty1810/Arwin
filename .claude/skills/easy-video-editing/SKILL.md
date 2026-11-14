@@ -7,6 +7,9 @@ description: Simple video editing for short-form reels with FFmpeg + Python. Use
 
 The person is a beginner. Talk in plain, simple words. Don't show commands unless they ask.
 
+**Captions are ALWAYS in English.** The person often speaks Malay (or rojak), but they want every caption
+and on-screen text in English. Never burn in Malay text.
+
 ## 0. Make sure the tools are there (every new session)
 
 Scripts live in this skill's `scripts/` folder (call it `$S` below:
@@ -44,13 +47,21 @@ Always remind them: "Watch it once before you post."
 
 ## Recipes
 
-**Transcribe / captions file**
+**Transcribe / captions file (always English)**
 ```bash
-python3 $S/transcribe.py in.mp4 --lang en
-python3 $S/transcribe.py in.mp4 --lang ms --model medium --prompt "names, brand words"   # Malay
+python3 $S/transcribe.py in.mp4 --lang en                              # English speech
+python3 $S/transcribe.py in.mp4 --lang ms --model medium --english     # Malay speech -> English captions
+python3 $S/transcribe.py in.mp4 --lang ms --model medium               # Malay text, only to check the meaning
 ```
-Makes `in.srt` + `in_words.json`. Show the person the text and fix wrong names in the .srt by hand.
-If they mix Malay and English ("rojak"), use `--lang ms --model medium`.
+Makes `in.srt` + `in_words.json`. For Malay speech:
+1. Make both the `--english` version and the plain Malay version.
+2. Compare them. If they mean the same thing, write a natural English .srt yourself on the Malay
+   timings (short lines, plain words) and use that.
+3. If the two disagree, or the audio is noisy and the words are unclear, do NOT caption a guess:
+   show the person both versions and ask what they actually said. Never guess health, money or
+   product claims.
+Fix wrong names in the .srt by hand. Run voice cleanup first when there is background noise:
+transcribing the cleaned audio is more accurate.
 
 **Pop-up captions burned in** (video must already be 1080x1920; make it vertical first)
 ```bash
@@ -74,6 +85,21 @@ Already-vertical video stays as is. With two people it follows the biggest face.
 ```bash
 ffmpeg -i in.mp4 -filter_complex "[0]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20[bg];[0]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2" -c:v libx264 -crf 18 -pix_fmt yuv420p -c:a copy out.mp4
 ```
+
+**Focus on the voice / remove background noise**
+```bash
+ffmpeg -i in.mp4 -af "highpass=f=90,lowpass=f=9000,afftdn=nr=18:nf=-37:tn=1,agate=threshold=0.02:ratio=3:attack=5:release=200,acompressor=threshold=-20dB:ratio=3:attack=5:release=100,loudnorm=I=-14:TP=-1.5:LRA=7,aresample=48000" -c:v copy -c:a aac -b:a 192k out.mp4
+```
+Set `nf=` to the clip's noise floor (`ffmpeg -i in.mp4 -af astats -f null - 2>&1 | grep "Noise floor dB" | tail -1`).
+Check after: the noise floor should drop ~15-20 dB. For heavy noise raise `nr=` to 25, not higher
+(the voice starts to sound robotic). Phone `.mov` files have extra audio tracks: always `-map 0:a:0`.
+
+**iPhone HDR clips** (check first: `ffprobe -v error -select_streams v:0 -show_entries stream=color_transfer -of csv=p=0 in.mov`;
+`arib-std-b67` = HLG HDR, `smpte2084` = PQ HDR). Without conversion they look washed out or orange on Instagram.
+```bash
+ffmpeg -i in.mov -map 0:v:0 -map 0:a:0 -vf "zscale=tin=arib-std-b67:min=bt2020nc:pin=bt2020:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p,eq=saturation=0.82:gamma=1.04" -c:v libx264 -crf 18 -color_primaries bt709 -color_trc bt709 -colorspace bt709 -c:a aac out.mp4
+```
+(For PQ use `tin=smpte2084`.) Look at a frame before and after: skin should not look orange.
 
 **Cut the pauses**
 ```bash
@@ -116,6 +142,7 @@ ffmpeg -ss 00:00:03 -i in.mp4 -frames:v 1 -q:v 2 cover.jpg
 ```
 
 ## Rules
+- Captions and on-screen text: English only, always.
 - Simple words. One-line explanation if something fails, then try the next simplest way.
 - Keep the original untouched; clear output names.
 - Captions sit in the lower middle so TikTok/Instagram buttons don't cover them.
